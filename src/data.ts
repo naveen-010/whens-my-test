@@ -3,6 +3,10 @@ export type EventStatus = "confirmed" | "reported" | "disputed" | "official";
 export type CourseSection = {
   code: string;
   type: "lecture" | "tutorial" | "practical";
+  schedule: Array<{
+    day: string;
+    hour: number;
+  }>;
 };
 
 export type Course = {

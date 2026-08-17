@@ -303,7 +303,7 @@ function App() {
     setCursor(parseISO(created.date));
     setView("week");
     setActiveDialog(null);
-    setToast("Test added to your calendar");
+    setToast(calendarConnected ? "Test added. Google Calendar syncs within 5 minutes." : "Test added");
   }
 
   async function disputeTest(eventId: string, reason: string) {
@@ -703,6 +703,17 @@ function WeekView({ cursor, events, courseMap, onOpen, onLeave }: CalendarViewPr
   });
   const timedEvents = weekEvents.filter((event) => event.start);
   const dateOnlyEvents = weekEvents.filter((event) => !event.start);
+  const occupiedHours = new Set<number>();
+  for (const event of timedEvents) {
+    if (!event.start) continue;
+    const [startHour, startMinute] = event.start.split(":").map(Number);
+    const eventStart = startHour * 60 + startMinute;
+    const eventEnd = eventStart + event.duration;
+    for (const hour of HOURS) {
+      if (eventStart < (hour + 1) * 60 && eventEnd > hour * 60) occupiedHours.add(hour);
+    }
+  }
+  const gridRows = HOURS.map((hour) => occupiedHours.has(hour) ? "68px" : "34px").join(" ");
 
   return (
     <div className="week-view">
@@ -737,7 +748,7 @@ function WeekView({ cursor, events, courseMap, onOpen, onLeave }: CalendarViewPr
       )}
 
       <div className="week-scroll">
-        <div className="week-grid">
+        <div className="week-grid" style={{ gridTemplateRows: gridRows }}>
           {HOURS.map((hour, rowIndex) => (
             <div className="hour-row" key={hour} style={{ gridRow: rowIndex + 1 }}>
               {formatHour(hour)}
@@ -1133,6 +1144,14 @@ function AddTestDialog({
   const [selectedCourseId, setSelectedCourseId] = useState(courses[0]?.id ?? "");
   const selectedCourse = courses.find((course) => course.id === selectedCourseId);
   const [selectedSection, setSelectedSection] = useState(selectedCourse?.section ?? "");
+  const [selectedDate, setSelectedDate] = useState("2026-08-24");
+  const [selectedTime, setSelectedTime] = useState(() =>
+    defaultTimeForSection(courses[0]?.sections, courses[0]?.section ?? "", "2026-08-24")
+  );
+
+  useEffect(() => {
+    setSelectedTime(defaultTimeForSection(selectedCourse?.sections, selectedSection, selectedDate));
+  }, [selectedCourse, selectedSection, selectedDate]);
 
   async function handleSubmit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -1219,11 +1238,11 @@ function AddTestDialog({
         <div className="form-row">
           <label>
             Date
-            <input type="date" name="date" defaultValue="2026-08-24" required />
+            <input type="date" name="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} required />
           </label>
           <label>
             Time
-            <input type="time" name="time" defaultValue="09:00" />
+            <input type="time" name="time" value={selectedTime} onChange={(event) => setSelectedTime(event.target.value)} />
           </label>
         </div>
         <div className="form-row">
@@ -1251,12 +1270,23 @@ function AddTestDialog({
         <div className="dialog-actions">
           <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
           <button type="submit" className="primary-button" disabled={submitting}>
-            {submitting ? "Adding..." : "Add to calendar"}
+            {submitting ? "Adding..." : "Add test"}
           </button>
         </div>
       </form>
     </DialogShell>
   );
+}
+
+function defaultTimeForSection(
+  sections: Course["sections"] | undefined,
+  sectionCode: string,
+  date: string
+) {
+  const schedule = sections?.find((section) => section.code === sectionCode)?.schedule ?? [];
+  const day = date ? format(parseISO(date), "EEEE") : "";
+  const meeting = schedule.find((slot) => slot.day === day) ?? schedule[0];
+  return meeting ? `${String(meeting.hour + 7).padStart(2, "0")}:00` : "";
 }
 
 function CoursesDialog({
@@ -1359,16 +1389,16 @@ function SettingsDialog({
   }
 
   return (
-    <DialogShell title="Calendar settings" description="Choose how tests reach you." onClose={onClose}>
+    <DialogShell title="Google Calendar settings" description="Control how tests sync to the separate When's My Test calendar in your Google Calendar account." onClose={onClose}>
       <div className="settings-groups">
         <section>
-          <h3>Reminders</h3>
-          <label className="settings-control"><span><strong>Default reminder</strong><small>For your own sections</small></span><select value={reminder} onChange={(event) => setReminder(event.target.value)}><option value="60">1 hour before</option><option value="1440">1 day before</option><option value="2880">2 days before</option></select></label>
-          <label className="settings-control"><span><strong>Other-section signals</strong><small>Useful hints, kept quieter</small></span><select value={otherMode} onChange={(event) => setOtherMode(event.target.value as Preferences["otherSectionMode"])}><option value="instant">Immediately</option><option value="digest">Daily digest</option><option value="off">Off</option></select></label>
+          <h3>Google Calendar events</h3>
+          <label className="settings-control"><span><strong>Popup reminder</strong><small>Applied to tests for your selected sections.</small></span><select value={reminder} onChange={(event) => setReminder(event.target.value)}><option value="60">1 hour before</option><option value="1440">1 day before</option><option value="2880">2 days before</option></select></label>
+          <label className="settings-control"><span><strong>Tests from other sections</strong><small>Choose whether they appear in Google Calendar.</small></span><select value={otherMode} onChange={(event) => setOtherMode(event.target.value as Preferences["otherSectionMode"])}><option value="instant">Add with reminders</option><option value="digest">Add without reminders</option><option value="off">Do not add</option></select></label>
         </section>
         <section>
-          <h3>Google Calendar</h3>
-          <div className="integration-row"><GoogleLogo size={23} weight="bold" /><span><strong>When's My Test calendar</strong><small>{connected ? "Connected and syncing" : "Not connected"}</small></span><button onClick={connected ? onDisconnect : onConnect}>{connected ? "Disconnect" : "Connect"}</button></div>
+          <h3>Google Calendar connection</h3>
+          <div className="integration-row"><GoogleLogo size={23} weight="bold" /><span><strong>Separate “When's My Test” calendar</strong><small>{connected ? "Connected. Changes sync within 5 minutes." : "Not connected. Connect to create it in Google Calendar."}</small></span><button onClick={connected ? onDisconnect : onConnect}>{connected ? "Disconnect" : "Connect"}</button></div>
         </section>
         <section>
           <h3>Account</h3>

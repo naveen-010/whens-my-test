@@ -51,7 +51,11 @@ type CourseRow = {
   name: string;
   color: string;
   section: string;
-  sections: Array<{ code: string; type: "lecture" | "tutorial" | "practical" }>;
+  sections: Array<{
+    code: string;
+    type: "lecture" | "tutorial" | "practical";
+    schedule: Array<{ day: string; hour: number }>;
+  }>;
   lecture_section: string | null;
   tutorial_section: string | null;
   practical_section: string | null;
@@ -126,7 +130,7 @@ async function loadCourses(userId: string) {
     LEFT JOIN sections practical ON practical.id = f.practical_section_id
     LEFT JOIN LATERAL (
       SELECT json_agg(
-        json_build_object('code', s.code, 'type', s.section_type)
+        json_build_object('code', s.code, 'type', s.section_type, 'schedule', s.schedule)
         ORDER BY CASE s.section_type WHEN 'tutorial' THEN 1 WHEN 'lecture' THEN 2 ELSE 3 END, s.code
       ) AS sections
       FROM sections s WHERE s.offering_id = o.id
