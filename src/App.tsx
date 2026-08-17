@@ -350,6 +350,16 @@ function App() {
     }
   }
 
+  async function deleteAccount() {
+    if (!window.confirm("Delete your account, follows, confirmations, settings, and stored Google access? Test reports will remain anonymously for community integrity.")) return;
+    await api("/account", { method: "DELETE" });
+    setUser(null);
+    setCourses([]);
+    setEvents([]);
+    setCalendarConnected(false);
+    setActiveDialog(null);
+  }
+
   if (bootstrapping) {
     return <FullPageLoading />;
   }
@@ -631,6 +641,7 @@ function App() {
           onConnect={connectCalendar}
           onDisconnect={() => void disconnectCalendar()}
           onSave={savePreferences}
+          onDeleteAccount={deleteAccount}
           onClose={() => setActiveDialog(null)}
         />
       )}
@@ -1315,6 +1326,7 @@ function SettingsDialog({
   onConnect,
   onDisconnect,
   onSave,
+  onDeleteAccount,
   onClose,
 }: {
   connected: boolean;
@@ -1322,6 +1334,7 @@ function SettingsDialog({
   onConnect: () => void;
   onDisconnect: () => void;
   onSave: (preferences: Preferences) => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
   onClose: () => void;
 }) {
   const [reminder, setReminder] = useState(String(preferences.reminderMinutes[0] ?? 1440));
@@ -1356,6 +1369,10 @@ function SettingsDialog({
         <section>
           <h3>Google Calendar</h3>
           <div className="integration-row"><GoogleLogo size={23} weight="bold" /><span><strong>When's My Test calendar</strong><small>{connected ? "Connected and syncing" : "Not connected"}</small></span><button onClick={connected ? onDisconnect : onConnect}>{connected ? "Disconnect" : "Connect"}</button></div>
+        </section>
+        <section>
+          <h3>Account</h3>
+          <div className="integration-row danger-row"><WarningCircle size={23} /><span><strong>Delete account</strong><small>Erase your identity, follows, confirmations, settings, and Google tokens.</small></span><button onClick={() => void onDeleteAccount()}>Delete</button></div>
         </section>
       </div>
       {error && <p className="form-error"><WarningCircle size={17} />{error}</p>}
@@ -1457,7 +1474,7 @@ function LoginScreen({
         )}
         <small className="auth-domain-note">Only @pilani.bits-pilani.ac.in accounts are accepted.</small>
       </section>
-      <p className="auth-footer">Community-reported dates are not official institute notices.</p>
+      <p className="auth-footer">Community-reported dates are not official institute notices. <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a></p>
     </main>
   );
 }

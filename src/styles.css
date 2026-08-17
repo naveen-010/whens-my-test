@@ -1525,6 +1525,11 @@ textarea:focus-visible {
   color: var(--accent-strong);
 }
 
+.integration-row.danger-row > svg,
+.danger-row button {
+  color: var(--danger);
+}
+
 .integration-row button {
   min-height: 32px;
   padding: 0 10px;

@@ -196,6 +196,14 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     reply.clearCookie(sessionCookie, cookieOptions);
     return reply.code(204).send();
   });
+
+  app.delete("/account", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    await sql`DELETE FROM users WHERE id = ${user.id}`;
+    reply.clearCookie(sessionCookie, cookieOptions);
+    return reply.code(204).send();
+  });
 }
 
 export { createOauthState, oauthCookie, cookieOptions };
