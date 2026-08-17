@@ -47,7 +47,6 @@ const preferencesBody = z.object({
   browserEnabled: z.boolean(),
   emailEnabled: z.boolean(),
   googleCalendarName: z.string().trim().min(1).max(80),
-  googleCalendarColor: z.string().regex(/^#[0-9a-f]{6}$/i),
   googleEventTitleFormat: z.enum(["course_title", "title_course", "course_kind", "title_only"]),
   googleEventLabelEnabled: z.boolean(),
   googleEventLabelName: z.string().trim().min(1).max(50),
@@ -214,7 +213,6 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
         browser_enabled: boolean;
         email_enabled: boolean;
         google_calendar_name: string;
-        google_calendar_color: string;
         google_event_title_format: "course_title" | "title_course" | "course_kind" | "title_only";
         google_event_label_enabled: boolean;
         google_event_label_name: string;
@@ -257,7 +255,6 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
         browser_enabled: true,
         email_enabled: false,
         google_calendar_name: "When's My Test",
-        google_calendar_color: "#2f6f68",
         google_event_title_format: "course_title",
         google_event_label_enabled: true,
         google_event_label_name: "Test",
@@ -466,7 +463,7 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
     await sql`
       INSERT INTO notification_preferences (
         user_id, reminder_minutes, google_reminders, other_section_mode,
-        browser_enabled, email_enabled, google_calendar_name, google_calendar_color,
+        browser_enabled, email_enabled, google_calendar_name,
         google_event_title_format, google_event_label_enabled, google_event_label_name,
         google_event_label_color, google_event_transparency, google_event_visibility,
         google_tentative_unconfirmed, google_include_section, google_include_topics,
@@ -475,7 +472,7 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
         ${user.id}, ${body.googleReminders.map((reminder) => reminder.minutes)},
         ${sql.json(body.googleReminders)}, ${body.otherSectionMode},
         ${body.browserEnabled}, ${body.emailEnabled}, ${body.googleCalendarName},
-        ${body.googleCalendarColor}, ${body.googleEventTitleFormat},
+        ${body.googleEventTitleFormat},
         ${body.googleEventLabelEnabled}, ${body.googleEventLabelName},
         ${body.googleEventLabelColor}, ${body.googleEventTransparency},
         ${body.googleEventVisibility}, ${body.googleTentativeUnconfirmed},
@@ -490,7 +487,6 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
         browser_enabled = EXCLUDED.browser_enabled,
         email_enabled = EXCLUDED.email_enabled,
         google_calendar_name = EXCLUDED.google_calendar_name,
-        google_calendar_color = EXCLUDED.google_calendar_color,
         google_event_title_format = EXCLUDED.google_event_title_format,
         google_event_label_enabled = EXCLUDED.google_event_label_enabled,
         google_event_label_name = EXCLUDED.google_event_label_name,

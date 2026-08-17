@@ -85,7 +85,6 @@ function App() {
     browserEnabled: true,
     emailEnabled: false,
     googleCalendarName: "When's My Test",
-    googleCalendarColor: "#2f6f68",
     googleEventTitleFormat: "course_title",
     googleEventLabelEnabled: true,
     googleEventLabelName: "Test",
@@ -1416,7 +1415,7 @@ function SettingsDialog({
         <section>
           <h3>Calendar appearance</h3>
           <label className="settings-control"><span><strong>Calendar name</strong><small>Name shown under My calendars in Google Calendar.</small></span><input type="text" maxLength={80} value={draft.googleCalendarName} onChange={(event) => setDraft({ ...draft, googleCalendarName: event.target.value })} /></label>
-          <label className="settings-control"><span><strong>Calendar color</strong><small>Color of the calendar in Google Calendar's sidebar.</small></span><span className="color-control"><input type="color" value={draft.googleCalendarColor} onChange={(event) => setDraft({ ...draft, googleCalendarColor: event.target.value })} /><code>{draft.googleCalendarColor}</code></span></label>
+          <p className="settings-section-note">Google controls the sidebar calendar color for this account. Test event color is controlled by the Google label below.</p>
         </section>
         <section>
           <h3>Event appearance</h3>

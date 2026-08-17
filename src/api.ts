@@ -14,7 +14,6 @@ export type Preferences = {
   browserEnabled: boolean;
   emailEnabled: boolean;
   googleCalendarName: string;
-  googleCalendarColor: string;
   googleEventTitleFormat: "course_title" | "title_course" | "course_kind" | "title_only";
   googleEventLabelEnabled: boolean;
   googleEventLabelName: string;
@@ -40,7 +39,6 @@ type BootstrapResponse = {
     browser_enabled: boolean;
     email_enabled: boolean;
     google_calendar_name: string;
-    google_calendar_color: string;
     google_event_title_format: Preferences["googleEventTitleFormat"];
     google_event_label_enabled: boolean;
     google_event_label_name: string;
@@ -96,7 +94,6 @@ export async function loadBootstrap() {
       browserEnabled: response.preferences.browser_enabled,
       emailEnabled: response.preferences.email_enabled,
       googleCalendarName: response.preferences.google_calendar_name,
-      googleCalendarColor: response.preferences.google_calendar_color,
       googleEventTitleFormat: response.preferences.google_event_title_format,
       googleEventLabelEnabled: response.preferences.google_event_label_enabled,
       googleEventLabelName: response.preferences.google_event_label_name,

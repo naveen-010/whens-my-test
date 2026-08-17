@@ -18,7 +18,6 @@ type CalendarPreferences = {
   google_reminders: GoogleReminder[];
   other_section_mode: "instant" | "digest" | "off";
   google_calendar_name: string;
-  google_calendar_color: string;
   google_event_title_format: "course_title" | "title_course" | "course_kind" | "title_only";
   google_event_label_enabled: boolean;
   google_event_label_name: string;
@@ -65,7 +64,6 @@ const defaultCalendarPreferences: Omit<CalendarPreferences, "updated_at"> = {
   google_reminders: [{ method: "popup", minutes: 1440 }, { method: "popup", minutes: 60 }],
   other_section_mode: "digest",
   google_calendar_name: "When's My Test",
-  google_calendar_color: "#2f6f68",
   google_event_title_format: "course_title",
   google_event_label_enabled: true,
   google_event_label_name: "Test",
@@ -91,13 +89,6 @@ function addDay(date: string) {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + 1);
   return value.toISOString().slice(0, 10);
-}
-
-function foregroundFor(background: string) {
-  const red = Number.parseInt(background.slice(1, 3), 16);
-  const green = Number.parseInt(background.slice(3, 5), 16);
-  const blue = Number.parseInt(background.slice(5, 7), 16);
-  return red * 0.299 + green * 0.587 + blue * 0.114 > 150 ? "#000000" : "#ffffff";
 }
 
 function googleEvent(test: SyncTestRow, preferences: CalendarPreferences, reminders: GoogleReminder[]) {
@@ -159,7 +150,7 @@ export async function syncCalendarForUser(userId: string) {
   try {
     const [storedPreferences] = await sql<CalendarPreferences[]>`
       SELECT
-        google_reminders, other_section_mode, google_calendar_name, google_calendar_color,
+        google_reminders, other_section_mode, google_calendar_name,
         google_event_title_format, google_event_label_enabled, google_event_label_name,
         google_event_label_color, google_event_transparency, google_event_visibility,
         google_tentative_unconfirmed, google_include_section, google_include_topics,
@@ -221,20 +212,6 @@ export async function syncCalendarForUser(userId: string) {
         }
       );
       tokens = updatedCalendar.tokens;
-      const updatedCalendarList = await googleApi<Record<string, unknown>>(
-        tokens,
-        `/calendar/v3/users/me/calendarList/${encodeURIComponent(calendarId)}?colorRgbFormat=true`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            backgroundColor: preferences.google_calendar_color,
-            foregroundColor: foregroundFor(preferences.google_calendar_color),
-            hidden: false,
-            selected: true,
-          }),
-        }
-      );
-      tokens = updatedCalendarList.tokens;
     }
 
     const tests = await sql<SyncTestRow[]>`
