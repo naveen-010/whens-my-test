@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the When's My Test database backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=whens-my-test-backup.service
+
+[Install]
+WantedBy=timers.target

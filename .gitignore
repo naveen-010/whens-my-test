@@ -1,4 +1,8 @@
 node_modules
 dist
+server/node_modules
+server/dist
+.env
+backups
 *.local
 .DS_Store

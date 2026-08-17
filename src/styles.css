@@ -65,6 +65,11 @@ button {
   color: inherit;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -1353,6 +1358,31 @@ textarea:focus-visible {
   gap: 6px;
 }
 
+.course-search {
+  position: sticky;
+  top: -25px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 0;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.course-search input {
+  width: 100%;
+  height: 39px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 11px;
+}
+
 .manage-course-row {
   display: grid;
   grid-template-columns: 9px 1fr auto;
@@ -1363,7 +1393,6 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--surface-2);
-  cursor: pointer;
   text-align: left;
 }
 
@@ -1372,16 +1401,16 @@ textarea:focus-visible {
   background: var(--surface-3);
 }
 
-.manage-course-row > span:nth-child(2) strong,
-.manage-course-row > span:nth-child(2) small {
+.manage-course-name strong,
+.manage-course-name small {
   display: block;
 }
 
-.manage-course-row > span:nth-child(2) strong {
+.manage-course-name strong {
   font: 750 11px/1.2 "JetBrains Mono Variable", monospace;
 }
 
-.manage-course-row > span:nth-child(2) small {
+.manage-course-name small {
   margin-top: 4px;
   color: var(--muted);
   font-size: 9px;
@@ -1399,12 +1428,48 @@ textarea:focus-visible {
   color: var(--muted);
   font-size: 9px;
   font-weight: 800;
+  cursor: pointer;
 }
 
 .follow-state.active {
   border-color: var(--accent-strong);
   background: color-mix(in srgb, var(--accent) 20%, var(--surface));
   color: var(--ink);
+}
+
+.course-section-selects {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 3px 0 2px;
+}
+
+.course-section-selects label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.course-section-selects select {
+  height: 29px;
+  min-width: 68px;
+  padding: 0 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 9px;
+}
+
+.empty-course-search {
+  margin: 20px 0;
+  color: var(--muted);
+  text-align: center;
+  font-size: 10px;
 }
 
 .settings-groups {
@@ -1503,6 +1568,183 @@ textarea:focus-visible {
 .notification-list time {
   color: var(--muted);
   font: 600 8px/1 "JetBrains Mono Variable", monospace;
+}
+
+.empty-notifications {
+  display: grid;
+  place-items: center;
+  min-height: 190px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-notifications strong {
+  margin-top: 12px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.empty-notifications p {
+  margin: 4px 0 0;
+  font-size: 10px;
+}
+
+.auth-screen {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 100dvh;
+  padding: 28px 18px;
+  background:
+    linear-gradient(color-mix(in srgb, var(--line) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 55%, transparent) 1px, transparent 1px),
+    radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 25rem),
+    var(--page);
+  background-size: 52px 52px, 52px 52px, auto, auto;
+}
+
+.auth-screen::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--page) 84%, transparent));
+}
+
+.auth-theme-button {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.auth-card {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  padding: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.auth-brand strong,
+.auth-brand small {
+  display: block;
+}
+
+.auth-brand strong {
+  font-size: 13px;
+}
+
+.auth-brand small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.auth-card h1 {
+  margin: 32px 0 12px;
+  font-size: clamp(34px, 8vw, 50px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.auth-card > p {
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.google-sign-in {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--accent-strong);
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.google-sign-in:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 87%, var(--ink));
+}
+
+.auth-domain-note {
+  display: block;
+  margin-top: 11px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.auth-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -8px 0 14px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.auth-footer {
+  position: relative;
+  z-index: 1;
+  max-width: 360px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+
+.loading-card {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+}
+
+.auth-loading-line {
+  width: 78%;
+  height: 14px;
+  border-radius: 5px;
+  background: var(--surface-3);
+  animation: skeleton-shift 1.2s ease-in-out infinite;
+}
+
+.auth-loading-line.short {
+  width: 48%;
 }
 
 .toast {
