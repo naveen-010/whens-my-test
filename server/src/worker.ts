@@ -25,7 +25,6 @@ async function run() {
 }
 
 const interval = setInterval(() => void run(), 5 * 60 * 1000);
-interval.unref();
 void run();
 
 async function shutdown() {
