@@ -80,10 +80,24 @@ function App() {
   const [startupError, setStartupError] = useState("");
   const [googleConfigured, setGoogleConfigured] = useState(true);
   const [preferences, setPreferences] = useState<Preferences>({
-    reminderMinutes: [1440, 60],
+    googleReminders: [{ method: "popup", minutes: 1440 }, { method: "popup", minutes: 60 }],
     otherSectionMode: "digest",
     browserEnabled: true,
     emailEnabled: false,
+    googleCalendarName: "When's My Test",
+    googleCalendarColor: "#2f6f68",
+    googleEventTitleFormat: "course_title",
+    googleEventLabelEnabled: true,
+    googleEventLabelName: "Test",
+    googleEventLabelColor: "#039be5",
+    googleEventTransparency: "opaque",
+    googleEventVisibility: "default",
+    googleTentativeUnconfirmed: true,
+    googleIncludeSection: true,
+    googleIncludeTopics: true,
+    googleIncludeSource: true,
+    googleIncludeReporter: true,
+    googleIncludeLocation: true,
   });
   const [view, setView] = useState<View>("week");
   const [cursor, setCursor] = useState(TODAY);
@@ -1367,20 +1381,24 @@ function SettingsDialog({
   onDeleteAccount: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [reminder, setReminder] = useState(String(preferences.reminderMinutes[0] ?? 1440));
-  const [otherMode, setOtherMode] = useState(preferences.otherSectionMode);
+  const [draft, setDraft] = useState(preferences);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  function updateReminder(index: number, update: Partial<Preferences["googleReminders"][number]>) {
+    setDraft((current) => ({
+      ...current,
+      googleReminders: current.googleReminders.map((reminder, reminderIndex) =>
+        reminderIndex === index ? { ...reminder, ...update } : reminder
+      ),
+    }));
+  }
 
   async function submitSettings() {
     setSaving(true);
     setError("");
     try {
-      await onSave({
-        ...preferences,
-        reminderMinutes: [Number(reminder)],
-        otherSectionMode: otherMode,
-      });
+      await onSave(draft);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Settings could not be saved.");
     } finally {
@@ -1389,16 +1407,60 @@ function SettingsDialog({
   }
 
   return (
-    <DialogShell title="Google Calendar settings" description="Control how tests sync to the separate When's My Test calendar in your Google Calendar account." onClose={onClose}>
+    <DialogShell title="Google Calendar settings" description="Control the separate calendar and the real Google Calendar events created in your BITS account. Changes sync within 5 minutes." onClose={onClose} wide>
       <div className="settings-groups">
         <section>
-          <h3>Google Calendar events</h3>
-          <label className="settings-control"><span><strong>Popup reminder</strong><small>Applied to tests for your selected sections.</small></span><select value={reminder} onChange={(event) => setReminder(event.target.value)}><option value="60">1 hour before</option><option value="1440">1 day before</option><option value="2880">2 days before</option></select></label>
-          <label className="settings-control"><span><strong>Tests from other sections</strong><small>Choose whether they appear in Google Calendar.</small></span><select value={otherMode} onChange={(event) => setOtherMode(event.target.value as Preferences["otherSectionMode"])}><option value="instant">Add with reminders</option><option value="digest">Add without reminders</option><option value="off">Do not add</option></select></label>
+          <h3>Google Calendar connection</h3>
+          <div className="integration-row"><GoogleLogo size={23} weight="bold" /><span><strong>Separate Google Calendar</strong><small>{connected ? `Connected as “${draft.googleCalendarName}”.` : "Not connected. Connect to create it in Google Calendar."}</small></span><button onClick={connected ? onDisconnect : onConnect}>{connected ? "Disconnect" : "Connect"}</button></div>
         </section>
         <section>
-          <h3>Google Calendar connection</h3>
-          <div className="integration-row"><GoogleLogo size={23} weight="bold" /><span><strong>Separate “When's My Test” calendar</strong><small>{connected ? "Connected. Changes sync within 5 minutes." : "Not connected. Connect to create it in Google Calendar."}</small></span><button onClick={connected ? onDisconnect : onConnect}>{connected ? "Disconnect" : "Connect"}</button></div>
+          <h3>Calendar appearance</h3>
+          <label className="settings-control"><span><strong>Calendar name</strong><small>Name shown under My calendars in Google Calendar.</small></span><input type="text" maxLength={80} value={draft.googleCalendarName} onChange={(event) => setDraft({ ...draft, googleCalendarName: event.target.value })} /></label>
+          <label className="settings-control"><span><strong>Calendar color</strong><small>Color of the calendar in Google Calendar's sidebar.</small></span><span className="color-control"><input type="color" value={draft.googleCalendarColor} onChange={(event) => setDraft({ ...draft, googleCalendarColor: event.target.value })} /><code>{draft.googleCalendarColor}</code></span></label>
+        </section>
+        <section>
+          <h3>Event appearance</h3>
+          <label className="settings-control"><span><strong>Event title</strong><small>How each synced test is named.</small></span><select value={draft.googleEventTitleFormat} onChange={(event) => setDraft({ ...draft, googleEventTitleFormat: event.target.value as Preferences["googleEventTitleFormat"] })}><option value="course_title">PHY F211: Tutorial Test</option><option value="title_course">Tutorial Test — PHY F211</option><option value="course_kind">PHY F211: Tut test</option><option value="title_only">Tutorial Test</option></select></label>
+          <label className="settings-toggle"><span><strong>Google event label</strong><small>Apply a real named Google Calendar label to every synced test.</small></span><input type="checkbox" checked={draft.googleEventLabelEnabled} onChange={(event) => setDraft({ ...draft, googleEventLabelEnabled: event.target.checked })} /></label>
+          {draft.googleEventLabelEnabled && (
+            <div className="settings-inline-grid">
+              <label><span>Label name</span><input type="text" maxLength={50} value={draft.googleEventLabelName} onChange={(event) => setDraft({ ...draft, googleEventLabelName: event.target.value })} /></label>
+              <label><span>Label color</span><span className="color-control"><input type="color" value={draft.googleEventLabelColor} onChange={(event) => setDraft({ ...draft, googleEventLabelColor: event.target.value })} /><code>{draft.googleEventLabelColor}</code></span></label>
+            </div>
+          )}
+          <label className="settings-control"><span><strong>Show as</strong><small>Whether test time blocks availability in Google Calendar.</small></span><select value={draft.googleEventTransparency} onChange={(event) => setDraft({ ...draft, googleEventTransparency: event.target.value as Preferences["googleEventTransparency"] })}><option value="opaque">Busy</option><option value="transparent">Free</option></select></label>
+          <label className="settings-control"><span><strong>Visibility</strong><small>Who can see details if you share this Google Calendar.</small></span><select value={draft.googleEventVisibility} onChange={(event) => setDraft({ ...draft, googleEventVisibility: event.target.value as Preferences["googleEventVisibility"] })}><option value="default">Calendar default</option><option value="private">Private</option><option value="public">Public</option></select></label>
+          <label className="settings-control"><span><strong>Unconfirmed or disputed tests</strong><small>Confirmation does not control syncing; this controls their Google status.</small></span><select value={draft.googleTentativeUnconfirmed ? "tentative" : "confirmed"} onChange={(event) => setDraft({ ...draft, googleTentativeUnconfirmed: event.target.value === "tentative" })}><option value="tentative">Mark tentative</option><option value="confirmed">Mark confirmed</option></select></label>
+        </section>
+        <section>
+          <h3>Event details</h3>
+          <p className="settings-section-note">Choose which report fields are copied into each Google Calendar event.</p>
+          <div className="settings-check-grid">
+            {([
+              ["googleIncludeSection", "Section"],
+              ["googleIncludeTopics", "Topics"],
+              ["googleIncludeSource", "Source and source detail"],
+              ["googleIncludeReporter", "Reporter name"],
+              ["googleIncludeLocation", "Venue as location"],
+            ] as const).map(([key, label]) => (
+              <label className="settings-check" key={key}><input type="checkbox" checked={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.checked })} /><span>{label}</span></label>
+            ))}
+          </div>
+        </section>
+        <section>
+          <h3>Reminders and other sections</h3>
+          <label className="settings-control"><span><strong>Tests from other sections</strong><small>Whether signals from unselected sections enter Google Calendar.</small></span><select value={draft.otherSectionMode} onChange={(event) => setDraft({ ...draft, otherSectionMode: event.target.value as Preferences["otherSectionMode"] })}><option value="instant">Add with the reminders below</option><option value="digest">Add without reminders</option><option value="off">Do not add</option></select></label>
+          <div className="reminder-heading"><span><strong>Event reminders</strong><small>Applied to tests for your selected sections. Google allows up to five.</small></span><button type="button" disabled={draft.googleReminders.length >= 5} onClick={() => setDraft({ ...draft, googleReminders: [...draft.googleReminders, { method: "popup", minutes: 60 }] })}><Plus size={14} /> Add reminder</button></div>
+          <div className="reminder-list">
+            {draft.googleReminders.map((reminder, index) => (
+              <div className="reminder-row" key={`${index}-${reminder.method}-${reminder.minutes}`}>
+                <select aria-label={`Reminder ${index + 1} method`} value={reminder.method} onChange={(event) => updateReminder(index, { method: event.target.value as "popup" | "email" })}><option value="popup">Popup notification</option><option value="email">Email</option></select>
+                <select aria-label={`Reminder ${index + 1} time`} value={reminder.minutes} onChange={(event) => updateReminder(index, { minutes: Number(event.target.value) })}><option value="0">At event time</option><option value="10">10 minutes before</option><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="120">2 hours before</option><option value="1440">1 day before</option><option value="2880">2 days before</option><option value="10080">1 week before</option><option value="20160">2 weeks before</option><option value="40320">4 weeks before</option></select>
+                <button type="button" className="reminder-remove" onClick={() => setDraft({ ...draft, googleReminders: draft.googleReminders.filter((_, reminderIndex) => reminderIndex !== index) })} aria-label={`Remove reminder ${index + 1}`}><X size={15} /></button>
+              </div>
+            ))}
+            {draft.googleReminders.length === 0 && <p className="settings-empty-note">No reminders. Events will still sync to Google Calendar.</p>}
+          </div>
         </section>
         <section>
           <h3>Account</h3>
@@ -1429,16 +1491,18 @@ function DialogShell({
   onClose,
   children,
   compact = false,
+  wide = false,
 }: {
   title: string;
   description: string;
   onClose: () => void;
   children: React.ReactNode;
   compact?: boolean;
+  wide?: boolean;
 }) {
   return createPortal(
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={compact ? "dialog compact-dialog" : "dialog"} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <section className={`dialog${compact ? " compact-dialog" : ""}${wide ? " wide-dialog" : ""}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
         <button className="dialog-close" onClick={onClose} aria-label="Close dialog"><X size={19} /></button>
         <header><h2 id="dialog-title">{title}</h2><p>{description}</p></header>
         {children}

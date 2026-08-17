@@ -9,6 +9,29 @@ import type { GoogleTokens } from "./types.js";
 type ConnectionRow = {
   encrypted_tokens: string;
   google_calendar_id: string | null;
+  last_synced_at: string | null;
+};
+
+type GoogleReminder = { method: "popup" | "email"; minutes: number };
+
+type CalendarPreferences = {
+  google_reminders: GoogleReminder[];
+  other_section_mode: "instant" | "digest" | "off";
+  google_calendar_name: string;
+  google_calendar_color: string;
+  google_event_title_format: "course_title" | "title_course" | "course_kind" | "title_only";
+  google_event_label_enabled: boolean;
+  google_event_label_name: string;
+  google_event_label_color: string;
+  google_event_transparency: "opaque" | "transparent";
+  google_event_visibility: "default" | "private" | "public";
+  google_tentative_unconfirmed: boolean;
+  google_include_section: boolean;
+  google_include_topics: boolean;
+  google_include_source: boolean;
+  google_include_reporter: boolean;
+  google_include_location: boolean;
+  updated_at: string;
 };
 
 type SyncTestRow = {
@@ -26,6 +49,8 @@ type SyncTestRow = {
   topics: string | null;
   source: string;
   source_detail: string | null;
+  reporter_name: string;
+  status: "reported" | "confirmed" | "disputed" | "official";
   own_section: boolean;
 };
 
@@ -33,6 +58,26 @@ type MappingRow = {
   test_id: string;
   google_event_id: string;
   synced_version: number;
+};
+
+const testLabelId = "9a94a530-a782-4af5-87eb-72553fbb2e0d";
+const defaultCalendarPreferences: Omit<CalendarPreferences, "updated_at"> = {
+  google_reminders: [{ method: "popup", minutes: 1440 }, { method: "popup", minutes: 60 }],
+  other_section_mode: "digest",
+  google_calendar_name: "When's My Test",
+  google_calendar_color: "#2f6f68",
+  google_event_title_format: "course_title",
+  google_event_label_enabled: true,
+  google_event_label_name: "Test",
+  google_event_label_color: "#039be5",
+  google_event_transparency: "opaque",
+  google_event_visibility: "default",
+  google_tentative_unconfirmed: true,
+  google_include_section: true,
+  google_include_topics: true,
+  google_include_source: true,
+  google_include_reporter: true,
+  google_include_location: true,
 };
 
 function addMinutes(date: string, time: string, minutes: number) {
@@ -48,20 +93,42 @@ function addDay(date: string) {
   return value.toISOString().slice(0, 10);
 }
 
-function googleEvent(test: SyncTestRow, reminderMinutes: number[]) {
+function foregroundFor(background: string) {
+  const red = Number.parseInt(background.slice(1, 3), 16);
+  const green = Number.parseInt(background.slice(3, 5), 16);
+  const blue = Number.parseInt(background.slice(5, 7), 16);
+  return red * 0.299 + green * 0.587 + blue * 0.114 > 150 ? "#000000" : "#ffffff";
+}
+
+function googleEvent(test: SyncTestRow, preferences: CalendarPreferences, reminders: GoogleReminder[]) {
+  const summaries = {
+    course_title: `${test.code}: ${test.title}`,
+    title_course: `${test.title} — ${test.code}`,
+    course_kind: `${test.code}: ${test.kind}`,
+    title_only: test.title,
+  };
   const description = [
     test.course_name,
-    test.section_codes.length ? `Sections: ${test.section_codes.join(", ")}` : "All sections",
-    test.topics ? `Topics: ${test.topics}` : null,
-    `Source: ${test.source}`,
-    test.source_detail,
+    preferences.google_include_section
+      ? (test.section_codes.length ? `Sections: ${test.section_codes.join(", ")}` : "All sections")
+      : null,
+    preferences.google_include_topics && test.topics ? `Topics: ${test.topics}` : null,
+    preferences.google_include_source ? `Source: ${test.source}` : null,
+    preferences.google_include_source ? test.source_detail : null,
+    preferences.google_include_reporter ? `Reported by: ${test.reporter_name}` : null,
     "Managed by When's My Test. Edit the report on the website so every student receives the correction.",
   ].filter(Boolean).join("\n\n");
 
   return {
-    summary: `${test.code}: ${test.title}`,
+    summary: summaries[preferences.google_event_title_format],
     description,
-    location: test.room ?? undefined,
+    location: preferences.google_include_location ? test.room ?? undefined : undefined,
+    eventLabelId: preferences.google_event_label_enabled ? testLabelId : undefined,
+    transparency: preferences.google_event_transparency,
+    visibility: preferences.google_event_visibility,
+    status: preferences.google_tentative_unconfirmed && ["reported", "disputed"].includes(test.status)
+      ? "tentative"
+      : "confirmed",
     start: test.start_time
       ? { dateTime: `${test.test_date}T${test.start_time.slice(0, 8)}+05:30`, timeZone: "Asia/Kolkata" }
       : { date: test.test_date },
@@ -70,7 +137,7 @@ function googleEvent(test: SyncTestRow, reminderMinutes: number[]) {
       : { date: addDay(test.test_date) },
     reminders: {
       useDefault: false,
-      overrides: reminderMinutes.slice(0, 5).map((minutes) => ({ method: "popup", minutes })),
+      overrides: reminders.slice(0, 5),
     },
     extendedProperties: {
       private: { whensMyTestId: test.id, whensMyTestVersion: String(test.version) },
@@ -80,7 +147,7 @@ function googleEvent(test: SyncTestRow, reminderMinutes: number[]) {
 
 export async function syncCalendarForUser(userId: string) {
   const [connection] = await sql<ConnectionRow[]>`
-    SELECT encrypted_tokens, google_calendar_id
+    SELECT encrypted_tokens, google_calendar_id, last_synced_at::text
     FROM calendar_connections
     WHERE user_id = ${userId} AND sync_enabled = true
   `;
@@ -90,22 +157,84 @@ export async function syncCalendarForUser(userId: string) {
   let calendarId = connection.google_calendar_id;
 
   try {
+    const [storedPreferences] = await sql<CalendarPreferences[]>`
+      SELECT
+        google_reminders, other_section_mode, google_calendar_name, google_calendar_color,
+        google_event_title_format, google_event_label_enabled, google_event_label_name,
+        google_event_label_color, google_event_transparency, google_event_visibility,
+        google_tentative_unconfirmed, google_include_section, google_include_topics,
+        google_include_source, google_include_reporter, google_include_location,
+        updated_at::text
+      FROM notification_preferences WHERE user_id = ${userId}
+    `;
+    const preferences: CalendarPreferences = storedPreferences ?? {
+      ...defaultCalendarPreferences,
+      updated_at: new Date(0).toISOString(),
+    };
+    let calendarCreated = false;
     if (!calendarId) {
       const created = await googleApi<{ id: string }>(tokens, "/calendar/v3/calendars", {
         method: "POST",
         body: JSON.stringify({
-          summary: "When's My Test",
+          summary: preferences.google_calendar_name,
           description: "Upcoming assessments from your followed BITS courses.",
           timeZone: "Asia/Kolkata",
         }),
       });
       tokens = created.tokens;
       calendarId = created.data.id;
+      calendarCreated = true;
       await sql`
         UPDATE calendar_connections
         SET google_calendar_id = ${calendarId}, encrypted_tokens = ${encryptJson(tokens)}, updated_at = now()
         WHERE user_id = ${userId}
       `;
+    }
+
+    const shouldSyncCalendarSettings = calendarCreated || !connection.last_synced_at ||
+      new Date(preferences.updated_at) > new Date(connection.last_synced_at);
+    if (shouldSyncCalendarSettings) {
+      const currentCalendar = await googleApi<{
+        labelProperties?: { eventLabels?: Array<{ id: string; backgroundColor: string; name?: string }> };
+      }>(tokens, `/calendar/v3/calendars/${encodeURIComponent(calendarId)}`);
+      tokens = currentCalendar.tokens;
+      const eventLabels = (currentCalendar.data.labelProperties?.eventLabels ?? [])
+        .filter((label) => label.id !== testLabelId);
+      if (preferences.google_event_label_enabled) {
+        eventLabels.push({
+          id: testLabelId,
+          name: preferences.google_event_label_name,
+          backgroundColor: preferences.google_event_label_color,
+        });
+      }
+      const updatedCalendar = await googleApi<Record<string, unknown>>(
+        tokens,
+        `/calendar/v3/calendars/${encodeURIComponent(calendarId)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            summary: preferences.google_calendar_name,
+            description: "Upcoming assessments from your followed BITS courses.",
+            timeZone: "Asia/Kolkata",
+            labelProperties: { eventLabels },
+          }),
+        }
+      );
+      tokens = updatedCalendar.tokens;
+      const updatedCalendarList = await googleApi<Record<string, unknown>>(
+        tokens,
+        `/calendar/v3/users/me/calendarList/${encodeURIComponent(calendarId)}?colorRgbFormat=true`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            backgroundColor: preferences.google_calendar_color,
+            foregroundColor: foregroundFor(preferences.google_calendar_color),
+            hidden: false,
+            selected: true,
+          }),
+        }
+      );
+      tokens = updatedCalendarList.tokens;
     }
 
     const tests = await sql<SyncTestRow[]>`
@@ -124,6 +253,8 @@ export async function syncCalendarForUser(userId: string) {
         t.topics,
         t.source,
         t.source_detail,
+        COALESCE(reporter.name, 'Anonymous report') AS reporter_name,
+        t.status,
         (
           cardinality(t.section_codes) = 0 OR
           t.section_codes && ARRAY_REMOVE(ARRAY[lecture.code, tutorial.code, practical.code], NULL)
@@ -135,6 +266,7 @@ export async function syncCalendarForUser(userId: string) {
       LEFT JOIN sections lecture ON lecture.id = f.lecture_section_id
       LEFT JOIN sections tutorial ON tutorial.id = f.tutorial_section_id
       LEFT JOIN sections practical ON practical.id = f.practical_section_id
+      LEFT JOIN users reporter ON reporter.id = t.created_by
       WHERE t.status <> 'cancelled'
       ORDER BY t.test_date, t.start_time NULLS FIRST
     `;
@@ -143,15 +275,8 @@ export async function syncCalendarForUser(userId: string) {
       FROM calendar_event_mappings WHERE user_id = ${userId}
     `;
     const mappingByTest = new Map(mappings.map((mapping) => [mapping.test_id, mapping]));
-    const [preferences] = await sql<{
-      reminder_minutes: number[];
-      other_section_mode: "instant" | "digest" | "off";
-    }[]>`
-      SELECT reminder_minutes, other_section_mode
-      FROM notification_preferences WHERE user_id = ${userId}
-    `;
-    const reminders = preferences?.reminder_minutes ?? [1440, 60];
-    const otherSectionMode = preferences?.other_section_mode ?? "digest";
+    const reminders = preferences.google_reminders;
+    const otherSectionMode = preferences.other_section_mode;
     const testsToSync = tests.filter((test) => test.own_section || otherSectionMode !== "off");
     const activeTestIds = new Set(testsToSync.map((test) => test.id));
 
@@ -173,18 +298,18 @@ export async function syncCalendarForUser(userId: string) {
       const mapping = mappingByTest.get(test.id);
       if (mapping?.synced_version === test.version) continue;
       const eventReminders = test.own_section || otherSectionMode === "instant" ? reminders : [];
-      const eventBody = JSON.stringify(googleEvent(test, eventReminders));
+      const eventBody = JSON.stringify(googleEvent(test, preferences, eventReminders));
       if (mapping) {
         const updated = await googleApi<Record<string, unknown>>(
           tokens,
-          `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(mapping.google_event_id)}`,
+          `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(mapping.google_event_id)}?eventLabelVersion=1`,
           { method: "PUT", body: eventBody }
         );
         tokens = updated.tokens;
       } else {
         const created = await googleApi<{ id: string }>(
           tokens,
-          `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+          `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?eventLabelVersion=1`,
           { method: "POST", body: eventBody }
         );
         tokens = created.tokens;
@@ -284,7 +409,7 @@ export async function registerCalendarRoutes(app: FastifyInstance) {
         if (calendarIdentity.email !== user.email) {
           throw new Error("Calendar account does not match the signed-in BITS account");
         }
-        const [existing] = await sql<ConnectionRow[]>`
+        const [existing] = await sql<Pick<ConnectionRow, "encrypted_tokens" | "google_calendar_id">[]>`
           SELECT encrypted_tokens, google_calendar_id FROM calendar_connections WHERE user_id = ${user.id}
         `;
         const oldTokens = existing ? decryptJson<GoogleTokens>(existing.encrypted_tokens) : null;

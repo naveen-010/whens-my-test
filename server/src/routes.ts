@@ -39,10 +39,27 @@ const updateBody = testBody
   .extend({ reason: z.string().trim().min(2).max(300) });
 const disputeBody = z.object({ reason: z.string().trim().min(3).max(500) });
 const preferencesBody = z.object({
-  reminderMinutes: z.array(z.number().int().min(0).max(40320)).min(1).max(5),
+  googleReminders: z.array(z.object({
+    method: z.enum(["popup", "email"]),
+    minutes: z.number().int().min(0).max(40320),
+  })).max(5),
   otherSectionMode: z.enum(["instant", "digest", "off"]),
   browserEnabled: z.boolean(),
   emailEnabled: z.boolean(),
+  googleCalendarName: z.string().trim().min(1).max(80),
+  googleCalendarColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  googleEventTitleFormat: z.enum(["course_title", "title_course", "course_kind", "title_only"]),
+  googleEventLabelEnabled: z.boolean(),
+  googleEventLabelName: z.string().trim().min(1).max(50),
+  googleEventLabelColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  googleEventTransparency: z.enum(["opaque", "transparent"]),
+  googleEventVisibility: z.enum(["default", "private", "public"]),
+  googleTentativeUnconfirmed: z.boolean(),
+  googleIncludeSection: z.boolean(),
+  googleIncludeTopics: z.boolean(),
+  googleIncludeSource: z.boolean(),
+  googleIncludeReporter: z.boolean(),
+  googleIncludeLocation: z.boolean(),
 });
 
 type CourseRow = {
@@ -192,11 +209,26 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
       `,
       sql<{
         reminder_minutes: number[];
+        google_reminders: Array<{ method: "popup" | "email"; minutes: number }>;
         other_section_mode: "instant" | "digest" | "off";
         browser_enabled: boolean;
         email_enabled: boolean;
+        google_calendar_name: string;
+        google_calendar_color: string;
+        google_event_title_format: "course_title" | "title_course" | "course_kind" | "title_only";
+        google_event_label_enabled: boolean;
+        google_event_label_name: string;
+        google_event_label_color: string;
+        google_event_transparency: "opaque" | "transparent";
+        google_event_visibility: "default" | "private" | "public";
+        google_tentative_unconfirmed: boolean;
+        google_include_section: boolean;
+        google_include_topics: boolean;
+        google_include_source: boolean;
+        google_include_reporter: boolean;
+        google_include_location: boolean;
       }[]>`
-        SELECT reminder_minutes, other_section_mode, browser_enabled, email_enabled
+        SELECT *
         FROM notification_preferences WHERE user_id = ${user.id}
       `,
     ]);
@@ -220,9 +252,24 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
       calendarConnected: Boolean(calendar[0]?.connected),
       preferences: preferences[0] ?? {
         reminder_minutes: [1440, 60],
+        google_reminders: [{ method: "popup", minutes: 1440 }, { method: "popup", minutes: 60 }],
         other_section_mode: "digest",
         browser_enabled: true,
         email_enabled: false,
+        google_calendar_name: "When's My Test",
+        google_calendar_color: "#2f6f68",
+        google_event_title_format: "course_title",
+        google_event_label_enabled: true,
+        google_event_label_name: "Test",
+        google_event_label_color: "#039be5",
+        google_event_transparency: "opaque",
+        google_event_visibility: "default",
+        google_tentative_unconfirmed: true,
+        google_include_section: true,
+        google_include_topics: true,
+        google_include_source: true,
+        google_include_reporter: true,
+        google_include_location: true,
       },
     };
   });
@@ -418,16 +465,44 @@ export async function registerApplicationRoutes(app: FastifyInstance) {
     const body = preferencesBody.parse(request.body);
     await sql`
       INSERT INTO notification_preferences (
-        user_id, reminder_minutes, other_section_mode, browser_enabled, email_enabled
+        user_id, reminder_minutes, google_reminders, other_section_mode,
+        browser_enabled, email_enabled, google_calendar_name, google_calendar_color,
+        google_event_title_format, google_event_label_enabled, google_event_label_name,
+        google_event_label_color, google_event_transparency, google_event_visibility,
+        google_tentative_unconfirmed, google_include_section, google_include_topics,
+        google_include_source, google_include_reporter, google_include_location
       ) VALUES (
-        ${user.id}, ${body.reminderMinutes}, ${body.otherSectionMode},
-        ${body.browserEnabled}, ${body.emailEnabled}
+        ${user.id}, ${body.googleReminders.map((reminder) => reminder.minutes)},
+        ${sql.json(body.googleReminders)}, ${body.otherSectionMode},
+        ${body.browserEnabled}, ${body.emailEnabled}, ${body.googleCalendarName},
+        ${body.googleCalendarColor}, ${body.googleEventTitleFormat},
+        ${body.googleEventLabelEnabled}, ${body.googleEventLabelName},
+        ${body.googleEventLabelColor}, ${body.googleEventTransparency},
+        ${body.googleEventVisibility}, ${body.googleTentativeUnconfirmed},
+        ${body.googleIncludeSection}, ${body.googleIncludeTopics},
+        ${body.googleIncludeSource}, ${body.googleIncludeReporter},
+        ${body.googleIncludeLocation}
       )
       ON CONFLICT (user_id) DO UPDATE SET
         reminder_minutes = EXCLUDED.reminder_minutes,
+        google_reminders = EXCLUDED.google_reminders,
         other_section_mode = EXCLUDED.other_section_mode,
         browser_enabled = EXCLUDED.browser_enabled,
         email_enabled = EXCLUDED.email_enabled,
+        google_calendar_name = EXCLUDED.google_calendar_name,
+        google_calendar_color = EXCLUDED.google_calendar_color,
+        google_event_title_format = EXCLUDED.google_event_title_format,
+        google_event_label_enabled = EXCLUDED.google_event_label_enabled,
+        google_event_label_name = EXCLUDED.google_event_label_name,
+        google_event_label_color = EXCLUDED.google_event_label_color,
+        google_event_transparency = EXCLUDED.google_event_transparency,
+        google_event_visibility = EXCLUDED.google_event_visibility,
+        google_tentative_unconfirmed = EXCLUDED.google_tentative_unconfirmed,
+        google_include_section = EXCLUDED.google_include_section,
+        google_include_topics = EXCLUDED.google_include_topics,
+        google_include_source = EXCLUDED.google_include_source,
+        google_include_reporter = EXCLUDED.google_include_reporter,
+        google_include_location = EXCLUDED.google_include_location,
         updated_at = now()
     `;
     await sql`

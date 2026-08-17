@@ -1265,6 +1265,10 @@ textarea:focus-visible {
   width: min(500px, 100%);
 }
 
+.wide-dialog {
+  width: min(700px, 100%);
+}
+
 .dialog-close {
   top: 17px;
   right: 17px;
@@ -1305,7 +1309,10 @@ textarea:focus-visible {
 .test-form input,
 .test-form select,
 .test-form textarea,
-.settings-control select {
+.settings-control select,
+.settings-control input[type="text"],
+.settings-inline-grid input[type="text"],
+.reminder-row select {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-control);
@@ -1483,6 +1490,7 @@ textarea:focus-visible {
 }
 
 .settings-control,
+.settings-toggle,
 .integration-row {
   display: grid;
   grid-template-columns: 1fr 165px;
@@ -1495,26 +1503,185 @@ textarea:focus-visible {
 
 .settings-control span strong,
 .settings-control span small,
+.settings-toggle span strong,
+.settings-toggle span small,
 .integration-row span strong,
 .integration-row span small {
   display: block;
 }
 
 .settings-control span strong,
+.settings-toggle span strong,
 .integration-row span strong {
   font-size: 10px;
 }
 
 .settings-control span small,
+.settings-toggle span small,
 .integration-row span small {
   margin-top: 3px;
   color: var(--muted);
   font-size: 9px;
 }
 
-.settings-control select {
+.settings-control select,
+.settings-control input[type="text"] {
   height: 36px;
   padding: 0 8px;
+}
+
+.settings-toggle {
+  grid-template-columns: 1fr auto;
+}
+
+.settings-toggle input,
+.settings-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent-strong);
+}
+
+.settings-inline-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 11px 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-inline-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.settings-inline-grid input[type="text"] {
+  height: 36px;
+  padding: 0 8px;
+}
+
+.color-control {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+}
+
+.color-control input[type="color"] {
+  width: 32px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.color-control code {
+  color: var(--muted);
+  font: 650 9px/1 "JetBrains Mono Variable", monospace;
+  text-transform: uppercase;
+}
+
+.settings-section-note,
+.settings-empty-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.settings-check-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  padding: 12px 0 4px;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.reminder-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 0 8px;
+}
+
+.reminder-heading span strong,
+.reminder-heading span small {
+  display: block;
+}
+
+.reminder-heading span strong {
+  font-size: 10px;
+}
+
+.reminder-heading span small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.reminder-heading button,
+.reminder-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 31px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.reminder-heading button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.reminder-list {
+  display: grid;
+  gap: 7px;
+}
+
+.reminder-row {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr auto;
+  gap: 7px;
+}
+
+.reminder-row select {
+  height: 34px;
+  padding: 0 8px;
+}
+
+.reminder-remove {
+  width: 34px;
+  padding: 0;
+  color: var(--danger);
 }
 
 .integration-row {
@@ -2011,6 +2178,15 @@ textarea:focus-visible {
   .settings-control {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .settings-inline-grid,
+  .settings-check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reminder-row {
+    grid-template-columns: 1fr 1fr auto;
   }
 
   .toast {
