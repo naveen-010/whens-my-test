@@ -21,6 +21,7 @@ export type Preferences = {
   googleEventTransparency: "opaque" | "transparent";
   googleEventVisibility: "default" | "private" | "public";
   googleTentativeUnconfirmed: boolean;
+  googleCancelledEventMode: "keep" | "remove";
   googleIncludeSection: boolean;
   googleIncludeTopics: boolean;
   googleIncludeSource: boolean;
@@ -33,6 +34,7 @@ type BootstrapResponse = {
   courses: Course[];
   events: TestEvent[];
   calendarConnected: boolean;
+  unreadNotifications: number;
   preferences: {
     google_reminders: Preferences["googleReminders"];
     other_section_mode: Preferences["otherSectionMode"];
@@ -46,6 +48,7 @@ type BootstrapResponse = {
     google_event_transparency: Preferences["googleEventTransparency"];
     google_event_visibility: Preferences["googleEventVisibility"];
     google_tentative_unconfirmed: boolean;
+    google_cancelled_event_mode: Preferences["googleCancelledEventMode"];
     google_include_section: boolean;
     google_include_topics: boolean;
     google_include_source: boolean;
@@ -58,7 +61,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
-    public code?: string
+    public code?: string,
+    public details?: Record<string, unknown>
   ) {
     super(message);
   }
@@ -77,8 +81,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const payload = await response.json().catch(() => ({ error: "Request failed" })) as {
       error?: string;
       code?: string;
+      details?: Record<string, unknown>;
     };
-    throw new ApiError(payload.error ?? "Request failed", response.status, payload.code);
+    throw new ApiError(payload.error ?? "Request failed", response.status, payload.code, payload.details);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -101,6 +106,7 @@ export async function loadBootstrap() {
       googleEventTransparency: response.preferences.google_event_transparency,
       googleEventVisibility: response.preferences.google_event_visibility,
       googleTentativeUnconfirmed: response.preferences.google_tentative_unconfirmed,
+      googleCancelledEventMode: response.preferences.google_cancelled_event_mode,
       googleIncludeSection: response.preferences.google_include_section,
       googleIncludeTopics: response.preferences.google_include_topics,
       googleIncludeSource: response.preferences.google_include_source,

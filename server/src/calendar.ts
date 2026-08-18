@@ -25,6 +25,7 @@ type CalendarPreferences = {
   google_event_transparency: "opaque" | "transparent";
   google_event_visibility: "default" | "private" | "public";
   google_tentative_unconfirmed: boolean;
+  google_cancelled_event_mode: "keep" | "remove";
   google_include_section: boolean;
   google_include_topics: boolean;
   google_include_source: boolean;
@@ -49,7 +50,10 @@ type SyncTestRow = {
   source: string;
   source_detail: string | null;
   reporter_name: string;
-  status: "reported" | "confirmed" | "disputed" | "official";
+  status: "reported" | "confirmed" | "official";
+  lifecycle_state: "scheduled" | "cancelled" | "retracted";
+  cancellation_reason: string | null;
+  has_pending_correction: boolean;
   own_section: boolean;
 };
 
@@ -71,6 +75,7 @@ const defaultCalendarPreferences: Omit<CalendarPreferences, "updated_at"> = {
   google_event_transparency: "opaque",
   google_event_visibility: "default",
   google_tentative_unconfirmed: true,
+  google_cancelled_event_mode: "keep",
   google_include_section: true,
   google_include_topics: true,
   google_include_source: true,
@@ -94,12 +99,18 @@ function addDay(date: string) {
 function googleEvent(test: SyncTestRow, preferences: CalendarPreferences, reminders: GoogleReminder[]) {
   const summaries = {
     course_title: `${test.code}: ${test.title}`,
-    title_course: `${test.title} — ${test.code}`,
+    title_course: `${test.title} - ${test.code}`,
     course_kind: `${test.code}: ${test.kind}`,
     title_only: test.title,
   };
+  const cancelled = test.lifecycle_state === "cancelled";
+  const summary = cancelled
+    ? `[CANCELLED] ${summaries[preferences.google_event_title_format]}`
+    : summaries[preferences.google_event_title_format];
   const description = [
     test.course_name,
+    cancelled ? `Cancelled: ${test.cancellation_reason ?? "No reason was provided."}` : null,
+    !cancelled && test.has_pending_correction ? "A change has been reported. Open When's My Test before relying on these details." : null,
     preferences.google_include_section
       ? (test.section_codes.length ? `Sections: ${test.section_codes.join(", ")}` : "All sections")
       : null,
@@ -111,13 +122,13 @@ function googleEvent(test: SyncTestRow, preferences: CalendarPreferences, remind
   ].filter(Boolean).join("\n\n");
 
   return {
-    summary: summaries[preferences.google_event_title_format],
+    summary,
     description,
     location: preferences.google_include_location ? test.room ?? undefined : undefined,
     eventLabelId: preferences.google_event_label_enabled ? testLabelId : undefined,
-    transparency: preferences.google_event_transparency,
+    transparency: cancelled ? "transparent" : preferences.google_event_transparency,
     visibility: preferences.google_event_visibility,
-    status: preferences.google_tentative_unconfirmed && ["reported", "disputed"].includes(test.status)
+    status: !cancelled && preferences.google_tentative_unconfirmed && (test.status === "reported" || test.has_pending_correction)
       ? "tentative"
       : "confirmed",
     start: test.start_time
@@ -128,7 +139,7 @@ function googleEvent(test: SyncTestRow, preferences: CalendarPreferences, remind
       : { date: addDay(test.test_date) },
     reminders: {
       useDefault: false,
-      overrides: reminders.slice(0, 5),
+      overrides: cancelled ? [] : reminders.slice(0, 5),
     },
     extendedProperties: {
       private: { whensMyTestId: test.id, whensMyTestVersion: String(test.version) },
@@ -153,7 +164,8 @@ export async function syncCalendarForUser(userId: string) {
         google_reminders, other_section_mode, google_calendar_name,
         google_event_title_format, google_event_label_enabled, google_event_label_name,
         google_event_label_color, google_event_transparency, google_event_visibility,
-        google_tentative_unconfirmed, google_include_section, google_include_topics,
+        google_tentative_unconfirmed, google_cancelled_event_mode,
+        google_include_section, google_include_topics,
         google_include_source, google_include_reporter, google_include_location,
         updated_at::text
       FROM notification_preferences WHERE user_id = ${userId}
@@ -232,6 +244,13 @@ export async function syncCalendarForUser(userId: string) {
         t.source_detail,
         COALESCE(reporter.name, 'Anonymous report') AS reporter_name,
         t.status,
+        t.lifecycle_state,
+        t.cancellation_reason,
+        EXISTS (
+          SELECT 1 FROM test_corrections correction
+          WHERE correction.test_id = t.id AND correction.status = 'pending'
+            AND correction.claim_version = t.claim_version
+        ) AS has_pending_correction,
         (
           cardinality(t.section_codes) = 0 OR
           t.section_codes && ARRAY_REMOVE(ARRAY[lecture.code, tutorial.code, practical.code], NULL)
@@ -244,7 +263,7 @@ export async function syncCalendarForUser(userId: string) {
       LEFT JOIN sections tutorial ON tutorial.id = f.tutorial_section_id
       LEFT JOIN sections practical ON practical.id = f.practical_section_id
       LEFT JOIN users reporter ON reporter.id = t.created_by
-      WHERE t.status <> 'cancelled'
+      WHERE t.lifecycle_state <> 'retracted'
       ORDER BY t.test_date, t.start_time NULLS FIRST
     `;
     const mappings = await sql<MappingRow[]>`
@@ -254,7 +273,10 @@ export async function syncCalendarForUser(userId: string) {
     const mappingByTest = new Map(mappings.map((mapping) => [mapping.test_id, mapping]));
     const reminders = preferences.google_reminders;
     const otherSectionMode = preferences.other_section_mode;
-    const testsToSync = tests.filter((test) => test.own_section || otherSectionMode !== "off");
+    const testsToSync = tests.filter((test) =>
+      (test.own_section || otherSectionMode !== "off") &&
+      (test.lifecycle_state !== "cancelled" || preferences.google_cancelled_event_mode === "keep")
+    );
     const activeTestIds = new Set(testsToSync.map((test) => test.id));
 
     for (const mapping of mappings) {

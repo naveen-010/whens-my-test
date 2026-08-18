@@ -18,13 +18,13 @@
       <h2>Data we collect</h2>
       <ul>
         <li>Your verified BITS Google account identifier, email address, display name, and profile picture.</li>
-        <li>The courses and sections you follow, test reports, confirmations, disputes, and reminder preferences.</li>
+        <li>The courses and sections you follow, test reports, corroborations, correction proposals, discussion comments, moderation reports, and reminder preferences.</li>
         <li>If you connect Google Calendar, encrypted OAuth tokens, the ID of the dedicated calendar the app creates, and event-sync mappings.</li>
         <li>Limited technical logs, such as request time, route, response status, and network address, for security and reliability.</li>
       </ul>
 
       <h2>How data is used</h2>
-      <p>Data is used only to authenticate eligible students, show relevant test reports, prevent abuse, and—when you opt in—create and maintain a separate “When's My Test” Google Calendar. The app requests the narrow <code>calendar.app.created</code> permission and does not read or change your other calendars.</p>
+      <p>Data is used only to authenticate eligible students, show relevant test reports, prevent abuse, and, when you opt in, create and maintain a separate “When's My Test” Google Calendar. The app requests the narrow <code>calendar.app.created</code> permission and does not read or change your other calendars.</p>
 
       <h2>Google user data</h2>
       <p>The use and transfer of information received from Google APIs follows the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its Limited Use requirements. Google user data is not sold, used for advertising, or shared except with infrastructure providers necessary to operate the service.</p>
@@ -33,7 +33,7 @@
       <p>Application data is stored in PostgreSQL on the project’s Oracle server. Google tokens are encrypted at rest. Sessions use secure, HTTP-only cookies; the database and application containers are not exposed directly to the internet. No system can be guaranteed completely secure.</p>
 
       <h2>Retention and deletion</h2>
-      <p>You can disconnect Google Calendar or delete your account in Settings. Account deletion removes your identity, follows, confirmations, disputes, preferences, sessions, and stored Google tokens. Test reports remain without your identity so the shared audit history is not silently destroyed. A calendar already created in Google remains in your account and can be deleted there.</p>
+      <p>You can disconnect Google Calendar or delete your account in Settings. Account deletion removes your identity, follows, corroborations, preferences, sessions, and stored Google tokens. Shared test reports, corrections, comments, and activity records remain without your identity so community history is not silently destroyed. A calendar already created in Google remains in your account and can be deleted there.</p>
 
       <h2>Contact</h2>
       <p>For privacy questions or a problem using the deletion control, open a private-safe request through the <a href="https://github.com/naveen-010/whens-my-test/issues">project issue tracker</a>. Do not post tokens, passwords, or sensitive personal information.</p>

@@ -1,6 +1,16 @@
 # When's My Test
 
-A section-aware, community-maintained test calendar for BITS Pilani students. Students follow their courses, see announced tests at a glance, confirm reports from classmates, and optionally sync tests to a dedicated Google Calendar.
+A section-aware, community-maintained test calendar for BITS Pilani students. Students follow courses, see announced tests at a glance, corroborate exact announcements, resolve corrections with an auditable history, discuss individual tests, and optionally sync them to a dedicated Google Calendar.
+
+## Trust workflow
+
+- A new test is visible immediately as a single-source report; its creator is the first attestation.
+- A second independent attestation marks the current test version as corroborated.
+- Date, time, and section edits create a new claim version instead of keeping stale corroborations.
+- Structured correction proposals show their reason publicly. Two matching student reports can apply ordinary corrections; official, conflicting, spam, and duplicate cases require a reporter or moderator decision.
+- Creators can edit, cancel, reinstate, or retract mistaken reports. Shared activity history is retained.
+- Each test has a focused discussion thread. Discussion comments never silently alter calendar facts.
+- Google Calendar can keep cancellations as visible `[CANCELLED]` events or remove them immediately.
 
 ## Architecture
 
@@ -19,7 +29,11 @@ npm install
 npm run dev
 ```
 
-The development origin is allowed by the API, so `http://localhost:5173` can use the deployed backend.
+Vite proxies `/api` to the deployed backend by default. To use a local API instead:
+
+```bash
+VITE_API_PROXY=http://127.0.0.1:8080 npm run dev
+```
 
 ## Deploy the backend
 

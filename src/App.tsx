@@ -26,6 +26,7 @@ import {
   CheckCircle,
   Clock,
   GearSix,
+  Gavel,
   GoogleLogo,
   ListBullets,
   MagnifyingGlass,
@@ -59,17 +60,35 @@ import {
   type AppUser,
   type Preferences,
 } from "./api";
+import { ModerationDialog, NotificationsDialog } from "./CommunityDialogs";
+import { TestDetailsDialog } from "./TestDetailsDialog";
 
 type View = "week" | "month" | "year" | "agenda";
 type EventPopover = { eventId: string; rect: DOMRect } | null;
+type NewTestInput = {
+  courseId: string;
+  title: string;
+  kind: string;
+  date: string;
+  start: string | null;
+  duration: number;
+  scope: "sections" | "course";
+  section: string | null;
+  room?: string;
+  topics?: string;
+  source: string;
+  sourceDetail?: string;
+  allowDuplicate?: boolean;
+};
 
 const TODAY = new Date();
 const HOURS = Array.from({ length: 11 }, (_, index) => index + 8);
 const STATUS_LABELS: Record<TestEvent["status"], string> = {
   official: "Official source",
-  confirmed: "Student confirmed",
-  reported: "New report",
-  disputed: "Disputed",
+  confirmed: "Corroborated",
+  reported: "Reported by one",
+  challenged: "Change reported",
+  cancelled: "Cancelled",
 };
 
 function App() {
@@ -92,6 +111,7 @@ function App() {
     googleEventTransparency: "opaque",
     googleEventVisibility: "default",
     googleTentativeUnconfirmed: true,
+    googleCancelledEventMode: "keep",
     googleIncludeSection: true,
     googleIncludeTopics: true,
     googleIncludeSource: true,
@@ -103,7 +123,7 @@ function App() {
   const [popover, setPopover] = useState<EventPopover>(null);
   const [showOtherSections, setShowOtherSections] = useState(true);
   const [activeDialog, setActiveDialog] = useState<
-    "add" | "courses" | "settings" | "notifications" | null
+    "add" | "courses" | "settings" | "notifications" | "moderation" | null
   >(null);
   const [dark, setDark] = useState(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -111,7 +131,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [disputeEvent, setDisputeEvent] = useState<TestEvent | null>(null);
+  const [detailEvent, setDetailEvent] = useState<{ testId: string; courseId: string } | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const closeTimer = useRef<number | null>(null);
 
   async function refreshData(showLoader = false) {
@@ -123,6 +144,7 @@ function App() {
       setEvents(bootstrap.events);
       setCalendarConnected(bootstrap.calendarConnected);
       setPreferences(bootstrap.preferences);
+      setUnreadNotifications(bootstrap.unreadNotifications);
       setStartupError("");
     } finally {
       if (showLoader) setLoading(false);
@@ -140,6 +162,7 @@ function App() {
         setEvents(data.events);
         setCalendarConnected(data.calendarConnected);
         setPreferences(data.preferences);
+        setUnreadNotifications(data.unreadNotifications);
       } catch (error) {
         if (!active) return;
         if (error instanceof ApiError && error.status === 401) {
@@ -229,30 +252,16 @@ function App() {
   }
 
   async function toggleConfirmation(eventId: string) {
-    const previous = events;
-    setEvents((current) =>
-      current.map((event) => {
-        if (event.id !== eventId) return event;
-        const confirmedByMe = !event.confirmedByMe;
-        return {
-          ...event,
-          confirmedByMe,
-          confirmations: Math.max(
-            0,
-            event.confirmations + (confirmedByMe ? 1 : -1)
-          ),
-          status:
-            event.status === "reported" && confirmedByMe
-              ? "confirmed"
-              : event.status,
-        };
-      })
-    );
+    const event = events.find((candidate) => candidate.id === eventId);
+    if (!event) return;
     try {
-      await api(`/tests/${eventId}/confirm`, { method: "POST" });
-      setToast("Confirmation updated");
+      const updated = await api<TestEvent>(`/tests/${eventId}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ claimVersion: event.claimVersion }),
+      });
+      setEvents((current) => current.map((candidate) => candidate.id === eventId ? updated : candidate));
+      setToast(updated.confirmedByMe ? "You corroborated this announcement" : "Corroboration withdrawn");
     } catch (error) {
-      setEvents(previous);
       setToast(error instanceof Error ? error.message : "Could not update confirmation");
     }
   }
@@ -307,7 +316,7 @@ function App() {
     }
   }
 
-  async function addTest(event: TestEvent) {
+  async function addTest(event: NewTestInput) {
     const created = await api<TestEvent>("/tests", {
       method: "POST",
       body: JSON.stringify(event),
@@ -317,19 +326,6 @@ function App() {
     setView("week");
     setActiveDialog(null);
     setToast(calendarConnected ? "Test added. Google Calendar syncs within 5 minutes." : "Test added");
-  }
-
-  async function disputeTest(eventId: string, reason: string) {
-    await api(`/tests/${eventId}/dispute`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    });
-    setEvents((current) => current.map((event) =>
-      event.id === eventId ? { ...event, status: "disputed" } : event
-    ));
-    setDisputeEvent(null);
-    setPopover(null);
-    setToast("Issue reported for review");
   }
 
   async function disconnectCalendar() {
@@ -415,13 +411,19 @@ function App() {
             <MagnifyingGlass size={20} />
           </button>
           <button
-            className="icon-button"
+            className="icon-button notification-button"
             aria-label="Notifications"
             title="Notifications"
             onClick={() => setActiveDialog("notifications")}
           >
             <Bell size={20} />
+            {unreadNotifications > 0 && <span className="notification-count">{Math.min(unreadNotifications, 99)}</span>}
           </button>
+          {user.role !== "student" && (
+            <button className="icon-button" aria-label="Moderation queue" title="Moderation queue" onClick={() => setActiveDialog("moderation")}>
+              <Gavel size={20} />
+            </button>
+          )}
           <button
             className="icon-button"
             aria-label={dark ? "Use light theme" : "Use dark theme"}
@@ -576,6 +578,13 @@ function App() {
           </div>
         </div>
 
+        <div className="calendar-legend" aria-label="Calendar legend">
+          <span><i className="legend-border" />Dashed border: another section</span>
+          <span><Question size={14} />Reported by one</span>
+          <span><CheckCircle size={14} weight="fill" />Corroborated</span>
+          <span><WarningCircle size={14} weight="fill" />Change reported</span>
+        </div>
+
         <div className="calendar-surface">
           {loading ? (
             <CalendarSkeleton />
@@ -626,8 +635,11 @@ function App() {
             onEnter={clearCloseTimer}
             onLeave={scheduleClosePopover}
             onClose={() => setPopover(null)}
-          onConfirm={() => toggleConfirmation(selectedEvent.id)}
-          onDispute={() => setDisputeEvent(selectedEvent)}
+            onConfirm={() => toggleConfirmation(selectedEvent.id)}
+            onOpenDetails={() => {
+              setDetailEvent({ testId: selectedEvent.id, courseId: selectedEvent.courseId });
+              setPopover(null);
+            }}
           />,
           document.body
         )}
@@ -659,13 +671,28 @@ function App() {
         />
       )}
       {activeDialog === "notifications" && (
-        <NotificationsDialog onClose={() => setActiveDialog(null)} />
+        <NotificationsDialog
+          onClose={() => setActiveDialog(null)}
+          onRead={() => setUnreadNotifications(0)}
+          onOpenTest={(testId) => {
+            const event = events.find((candidate) => candidate.id === testId);
+            if (event) setDetailEvent({ testId, courseId: event.courseId });
+          }}
+        />
       )}
-      {disputeEvent && (
-        <DisputeDialog
-          event={disputeEvent}
-          onSubmit={(reason) => disputeTest(disputeEvent.id, reason)}
-          onClose={() => setDisputeEvent(null)}
+      {activeDialog === "moderation" && (
+        <ModerationDialog
+          onClose={() => setActiveDialog(null)}
+          onOpenTest={(testId, courseId) => setDetailEvent({ testId, courseId })}
+        />
+      )}
+      {detailEvent && courseMap.get(detailEvent.courseId) && (
+        <TestDetailsDialog
+          testId={detailEvent.testId}
+          course={courseMap.get(detailEvent.courseId)!}
+          courseEvents={events.filter((event) => event.courseId === detailEvent.courseId)}
+          onClose={() => setDetailEvent(null)}
+          onChanged={() => refreshData()}
         />
       )}
 
@@ -958,7 +985,7 @@ function AgendaView({ cursor, events, courseMap, onOpen, onLeave }: CalendarView
                     <small>{event.title}</small>
                   </span>
                   <span className="agenda-section">{event.section}</span>
-                  <StatusIcon status={event.status} />
+                  <StatusIcon event={event} />
                 </button>
               );
             })}
@@ -984,7 +1011,7 @@ function EventButton({
 }) {
   return (
     <button
-      className={`test-event ${compact ? "compact" : ""} ${event.otherSection ? "other-section" : ""}`}
+      className={`test-event ${compact ? "compact" : ""} ${event.otherSection ? "other-section" : ""} ${event.lifecycleState === "cancelled" ? "cancelled" : ""} ${event.issueState !== "none" ? "challenged" : ""}`}
       style={{ "--course-color": course.color } as CSSProperties}
       onPointerEnter={(pointerEvent) => onOpen(event.id, pointerEvent.currentTarget)}
       onPointerLeave={onLeave}
@@ -997,15 +1024,16 @@ function EventButton({
       <span className="event-meta">
         {event.kind} <b>{event.section}</b>
       </span>
-      <StatusIcon status={event.status} />
+      <StatusIcon event={event} />
     </button>
   );
 }
 
-function StatusIcon({ status }: { status: TestEvent["status"] }) {
-  if (status === "official") return <Sparkle className="status-icon" size={14} weight="fill" />;
-  if (status === "disputed") return <WarningCircle className="status-icon" size={14} weight="fill" />;
-  if (status === "confirmed") return <CheckCircle className="status-icon" size={14} weight="fill" />;
+function StatusIcon({ event }: { event: TestEvent }) {
+  if (event.lifecycleState === "cancelled") return <X className="status-icon" size={14} weight="bold" />;
+  if (event.issueState !== "none") return <WarningCircle className="status-icon" size={14} weight="fill" />;
+  if (event.evidenceState === "official") return <Sparkle className="status-icon" size={14} weight="fill" />;
+  if (event.evidenceState === "corroborated") return <CheckCircle className="status-icon" size={14} weight="fill" />;
   return <Question className="status-icon" size={14} weight="bold" />;
 }
 
@@ -1017,7 +1045,7 @@ function EventDetails({
   onLeave,
   onClose,
   onConfirm,
-  onDispute,
+  onOpenDetails,
 }: {
   event: TestEvent;
   course: Course;
@@ -1026,7 +1054,7 @@ function EventDetails({
   onLeave: () => void;
   onClose: () => void;
   onConfirm: () => void;
-  onDispute: () => void;
+  onOpenDetails: () => void;
 }) {
   const width = 340;
   const left = rect.right + 12 + width < window.innerWidth
@@ -1051,10 +1079,13 @@ function EventDetails({
         <p>{course.name}</p>
       </div>
       <div className={`status-badge ${event.status}`}>
-        <StatusIcon status={event.status} />
+        <StatusIcon event={event} />
         {STATUS_LABELS[event.status]}
-        {event.confirmations > 0 && <span>{event.confirmations} confirmations</span>}
+        {event.confirmations > 0 && <span>{event.confirmations} {event.confirmations === 1 ? "report" : "reports"}</span>}
       </div>
+      {event.otherSection && <p className="popover-section-note">This is for {event.section}, which is not one of your selected sections.</p>}
+      {event.lifecycleState === "cancelled" && <div className="popover-alert"><strong>Cancelled</strong><span>{event.cancellationReason ?? "No reason provided."}</span></div>}
+      {event.issueState !== "none" && <div className="popover-alert warning"><strong>{event.issueState === "conflicting" ? "Conflicting reports" : "Change reported"}</strong><span>Open details to see the reasons and current discussion.</span></div>}
       <dl className="event-facts">
         <div>
           <Clock size={17} />
@@ -1083,63 +1114,17 @@ function EventDetails({
         <p>{event.sourceDetail}</p>
         <small>Added by {event.reporter} on {event.reportedAt}</small>
       </div>
-      {event.status !== "official" && (
+      {event.lifecycleState === "scheduled" && !event.isCreator && (
         <div className="popover-actions">
           <button className={event.confirmedByMe ? "confirm-button confirmed" : "confirm-button"} onClick={onConfirm}>
             {event.confirmedByMe ? <Check size={17} weight="bold" /> : <Plus size={17} weight="bold" />}
-            {event.confirmedByMe ? "Confirmed" : "I heard this too"}
+            {event.confirmedByMe ? "You corroborated - Undo" : "I also heard or saw this"}
           </button>
-          <button className="text-action" onClick={onDispute}>Report issue</button>
         </div>
       )}
+      {event.isCreator && <p className="creator-popover-note"><Check size={15} weight="bold" />You shared this report</p>}
+      <button className="open-detail-button" onClick={onOpenDetails}>Open details, corrections and discussion</button>
     </aside>
-  );
-}
-
-function DisputeDialog({
-  event,
-  onSubmit,
-  onClose,
-}: {
-  event: TestEvent;
-  onSubmit: (reason: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [reason, setReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit(formEvent: FormEvent<HTMLFormElement>) {
-    formEvent.preventDefault();
-    if (reason.trim().length < 3) {
-      setError("Briefly explain what appears to be wrong.");
-      return;
-    }
-    setSubmitting(true);
-    setError("");
-    try {
-      await onSubmit(reason.trim());
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "The issue could not be reported.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <DialogShell title="Report an issue" description={`Flag ${event.title} if its date, section, or details look incorrect.`} onClose={onClose} compact>
-      <form className="test-form" onSubmit={submit}>
-        <label>
-          What is wrong?
-          <textarea value={reason} onChange={(changeEvent) => setReason(changeEvent.target.value)} rows={4} maxLength={500} autoFocus />
-        </label>
-        {error && <p className="form-error"><WarningCircle size={17} />{error}</p>}
-        <div className="dialog-actions">
-          <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
-          <button type="submit" className="primary-button" disabled={submitting}>{submitting ? "Reporting..." : "Report issue"}</button>
-        </div>
-      </form>
-    </DialogShell>
   );
 }
 
@@ -1150,17 +1135,18 @@ function AddTestDialog({
 }: {
   courses: Course[];
   onClose: () => void;
-  onSubmit: (event: TestEvent) => Promise<void>;
+  onSubmit: (event: NewTestInput) => Promise<void>;
 }) {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState(courses[0]?.id ?? "");
   const selectedCourse = courses.find((course) => course.id === selectedCourseId);
   const [selectedSection, setSelectedSection] = useState(selectedCourse?.section ?? "");
-  const [selectedDate, setSelectedDate] = useState("2026-08-24");
+  const [selectedDate, setSelectedDate] = useState(format(TODAY, "yyyy-MM-dd"));
   const [selectedTime, setSelectedTime] = useState(() =>
-    defaultTimeForSection(courses[0]?.sections, courses[0]?.section ?? "", "2026-08-24")
+    defaultTimeForSection(courses[0]?.sections, courses[0]?.section ?? "", format(TODAY, "yyyy-MM-dd"))
   );
+  const [allSections, setAllSections] = useState(false);
 
   useEffect(() => {
     setSelectedTime(defaultTimeForSection(selectedCourse?.sections, selectedSection, selectedDate));
@@ -1179,25 +1165,32 @@ function AddTestDialog({
     setSubmitting(true);
     setError("");
     try {
-      await onSubmit({
-        id: `pending-${Date.now()}`,
+      const submission: NewTestInput = {
         courseId,
         title: String(data.get("title") || "Tutorial Test"),
         kind: String(data.get("kind") || "Tut test"),
         date,
         start: String(data.get("time") || "") || null,
         duration: 30,
-        section: String(data.get("section") || course.section),
+        scope: allSections ? "course" : "sections",
+        section: allSections ? null : String(data.get("section") || course.section),
         room: String(data.get("room") || "") || undefined,
         topics: String(data.get("topics") || "") || undefined,
         source: String(data.get("source") || "Announced in class"),
-        sourceDetail: "Reported through When's My Test.",
-        reporter: "You",
-        reportedAt: format(TODAY, "d MMM, h:mm a"),
-        confirmations: 1,
-        confirmedByMe: true,
-        status: "reported",
-      });
+        sourceDetail: String(data.get("sourceDetail") || "") || undefined,
+      };
+      try {
+        await onSubmit(submission);
+      } catch (submitError) {
+        if (submitError instanceof ApiError && submitError.code === "POSSIBLE_DUPLICATE") {
+          const duplicate = submitError.details;
+          const shouldAdd = window.confirm(`${submitError.message}\n\n${String(duplicate?.date ?? "")} ${String(duplicate?.start ?? "")} ${String(duplicate?.section ?? "")}\n\nAdd another report anyway?`);
+          if (shouldAdd) await onSubmit({ ...submission, allowDuplicate: true });
+          else throw new Error("Use the existing test and corroborate it instead.");
+        } else {
+          throw submitError;
+        }
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "The test could not be added.");
     } finally {
@@ -1217,6 +1210,7 @@ function AddTestDialog({
               const course = courses.find((item) => item.id === event.target.value);
               setSelectedCourseId(event.target.value);
               setSelectedSection(course?.section ?? "");
+              setAllSections(false);
             }}
           >
             {courses.map((course) => <option value={course.id} key={course.id}>{course.code} - {course.name}</option>)}
@@ -1235,10 +1229,14 @@ function AddTestDialog({
           </label>
           <label>
             Section
-            <select name="section" value={selectedSection} onChange={(event) => setSelectedSection(event.target.value)}>
+            <select name="section" value={allSections ? "ALL" : selectedSection} onChange={(event) => {
+              setAllSections(event.target.value === "ALL");
+              if (event.target.value !== "ALL") setSelectedSection(event.target.value);
+            }}>
+              <option value="ALL">All sections</option>
               {selectedCourse?.sections.map((section) => (
                 <option value={section.code} key={`${section.type}-${section.code}`}>
-                  {section.code} · {section.type}
+                  {section.code} - {section.type}
                 </option>
               ))}
             </select>
@@ -1275,6 +1273,10 @@ function AddTestDialog({
             </select>
           </label>
         </div>
+        <label>
+          Source details
+          <textarea name="sourceDetail" rows={2} maxLength={1000} placeholder="For example, announced near the end of Tuesday's T2 tutorial." />
+        </label>
         <label>
           Topics covered
           <textarea name="topics" rows={3} placeholder="What did the professor say will be tested?" />
@@ -1419,7 +1421,7 @@ function SettingsDialog({
         </section>
         <section>
           <h3>Event appearance</h3>
-          <label className="settings-control"><span><strong>Event title</strong><small>How each synced test is named.</small></span><select value={draft.googleEventTitleFormat} onChange={(event) => setDraft({ ...draft, googleEventTitleFormat: event.target.value as Preferences["googleEventTitleFormat"] })}><option value="course_title">PHY F211: Tutorial Test</option><option value="title_course">Tutorial Test — PHY F211</option><option value="course_kind">PHY F211: Tut test</option><option value="title_only">Tutorial Test</option></select></label>
+          <label className="settings-control"><span><strong>Event title</strong><small>How each synced test is named.</small></span><select value={draft.googleEventTitleFormat} onChange={(event) => setDraft({ ...draft, googleEventTitleFormat: event.target.value as Preferences["googleEventTitleFormat"] })}><option value="course_title">PHY F211: Tutorial Test</option><option value="title_course">Tutorial Test - PHY F211</option><option value="course_kind">PHY F211: Tut test</option><option value="title_only">Tutorial Test</option></select></label>
           <label className="settings-toggle"><span><strong>Google event label</strong><small>Apply a real named Google Calendar label to every synced test.</small></span><input type="checkbox" checked={draft.googleEventLabelEnabled} onChange={(event) => setDraft({ ...draft, googleEventLabelEnabled: event.target.checked })} /></label>
           {draft.googleEventLabelEnabled && (
             <div className="settings-inline-grid">
@@ -1429,7 +1431,8 @@ function SettingsDialog({
           )}
           <label className="settings-control"><span><strong>Show as</strong><small>Whether test time blocks availability in Google Calendar.</small></span><select value={draft.googleEventTransparency} onChange={(event) => setDraft({ ...draft, googleEventTransparency: event.target.value as Preferences["googleEventTransparency"] })}><option value="opaque">Busy</option><option value="transparent">Free</option></select></label>
           <label className="settings-control"><span><strong>Visibility</strong><small>Who can see details if you share this Google Calendar.</small></span><select value={draft.googleEventVisibility} onChange={(event) => setDraft({ ...draft, googleEventVisibility: event.target.value as Preferences["googleEventVisibility"] })}><option value="default">Calendar default</option><option value="private">Private</option><option value="public">Public</option></select></label>
-          <label className="settings-control"><span><strong>Unconfirmed or disputed tests</strong><small>Confirmation does not control syncing; this controls their Google status.</small></span><select value={draft.googleTentativeUnconfirmed ? "tentative" : "confirmed"} onChange={(event) => setDraft({ ...draft, googleTentativeUnconfirmed: event.target.value === "tentative" })}><option value="tentative">Mark tentative</option><option value="confirmed">Mark confirmed</option></select></label>
+          <label className="settings-control"><span><strong>Single-source or challenged tests</strong><small>These still sync. Choose whether Google Calendar marks them as tentative.</small></span><select value={draft.googleTentativeUnconfirmed ? "tentative" : "confirmed"} onChange={(event) => setDraft({ ...draft, googleTentativeUnconfirmed: event.target.value === "tentative" })}><option value="tentative">Mark tentative</option><option value="confirmed">Mark confirmed</option></select></label>
+          <label className="settings-control"><span><strong>Cancelled tests</strong><small>Keep a visible cancellation notice or remove the Google event immediately.</small></span><select value={draft.googleCancelledEventMode} onChange={(event) => setDraft({ ...draft, googleCancelledEventMode: event.target.value as Preferences["googleCancelledEventMode"] })}><option value="keep">Keep as [CANCELLED] and remove reminders</option><option value="remove">Remove from Google Calendar</option></select></label>
         </section>
         <section>
           <h3>Event details</h3>
@@ -1468,18 +1471,6 @@ function SettingsDialog({
       </div>
       {error && <p className="form-error"><WarningCircle size={17} />{error}</p>}
       <div className="dialog-actions"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={saving} onClick={() => void submitSettings()}>{saving ? "Saving..." : "Save settings"}</button></div>
-    </DialogShell>
-  );
-}
-
-function NotificationsDialog({ onClose }: { onClose: () => void }) {
-  return (
-    <DialogShell title="Notifications" description="Recent changes to your followed courses." onClose={onClose} compact>
-      <div className="empty-notifications">
-        <Bell size={34} weight="light" />
-        <strong>You are caught up</strong>
-        <p>New reports and changes will appear here.</p>
-      </div>
     </DialogShell>
   );
 }
